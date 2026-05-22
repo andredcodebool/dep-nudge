@@ -6,16 +6,17 @@ import argparse
 import sys
 from pathlib import Path
 
-from dep_nudge import cache as _cache
 from dep_nudge.checker import check_requirements
 from dep_nudge.parser import parse_requirements
-from dep_nudge.report import has_outdated, print_report
+from dep_nudge.report import print_report, has_outdated
+from dep_nudge.formatter import render, SUPPORTED_FORMATS
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Return the argument parser for dep-nudge."""
     parser = argparse.ArgumentParser(
         prog="dep-nudge",
-        description="Scan requirements files and flag outdated or vulnerable packages.",
+        description="Scan requirements files for outdated or vulnerable packages.",
     )
     parser.add_argument(
         "file",
@@ -24,54 +25,58 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to requirements file (default: requirements.txt)",
     )
     parser.add_argument(
-        "--no-cache",
-        action="store_true",
-        default=False,
-        help="Bypass the local cache and always fetch fresh data",
-    )
-    parser.add_argument(
-        "--clear-cache",
-        action="store_true",
-        default=False,
-        help="Clear the local cache and exit",
-    )
-    parser.add_argument(
         "--no-colour",
         action="store_true",
         default=False,
         help="Disable coloured output",
     )
     parser.add_argument(
-        "--exit-code",
+        "--exit-zero",
         action="store_true",
         default=False,
-        help="Exit with code 1 if any packages are outdated",
+        help="Always exit with code 0 even when issues are found",
+    )
+    parser.add_argument(
+        "--format",
+        choices=SUPPORTED_FORMATS,
+        default="text",
+        help="Output format (default: text)",
+    )
+    parser.add_argument(
+        "--output",
+        metavar="FILE",
+        default=None,
+        help="Write output to FILE instead of stdout (only for json/csv formats)",
     )
     return parser
 
 
 def run(args: argparse.Namespace) -> int:
-    if args.clear_cache:
-        removed = _cache.clear()
-        print(f"Cache cleared ({removed} entries removed).")
-        return 0
-
+    """Execute the main logic; return the process exit code."""
     req_path = Path(args.file)
     if not req_path.exists():
-        print(f"Error: file not found: {req_path}", file=sys.stderr)
+        print(f"dep-nudge: file not found: {req_path}", file=sys.stderr)
         return 2
 
     requirements = parse_requirements(req_path)
-    use_cache = not args.no_cache
-    results = check_requirements(requirements, use_cache=use_cache)
-    print_report(results, colour=not args.no_colour)
+    results = check_requirements(requirements)
 
-    if args.exit_code and has_outdated(results):
-        return 1
-    return 0
+    if args.format in ("json", "csv"):
+        rendered = render(results, args.format)
+        if args.output:
+            Path(args.output).write_text(rendered, encoding="utf-8")
+        else:
+            print(rendered)
+    else:
+        print_report(results, colour=not args.no_colour)
+
+    if args.exit_zero:
+        return 0
+    return 1 if has_outdated(results) else 0
 
 
 def main() -> None:  # pragma: no cover
+    """Entry point registered in pyproject.toml."""
     parser = build_parser()
     args = parser.parse_args()
     sys.exit(run(args))
