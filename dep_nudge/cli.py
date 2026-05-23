@@ -51,6 +51,23 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _write_output(rendered: str, output_path: str | None) -> None:
+    """Write rendered output to a file or stdout.
+
+    Args:
+        rendered: The formatted string to write.
+        output_path: Destination file path, or ``None`` to write to stdout.
+    """
+    if output_path:
+        try:
+            Path(output_path).write_text(rendered, encoding="utf-8")
+        except OSError as exc:
+            print(f"dep-nudge: could not write output file: {exc}", file=sys.stderr)
+            raise
+    else:
+        print(rendered)
+
+
 def run(args: argparse.Namespace) -> int:
     """Execute the main logic; return the process exit code."""
     req_path = Path(args.file)
@@ -63,10 +80,10 @@ def run(args: argparse.Namespace) -> int:
 
     if args.format in ("json", "csv"):
         rendered = render(results, args.format)
-        if args.output:
-            Path(args.output).write_text(rendered, encoding="utf-8")
-        else:
-            print(rendered)
+        try:
+            _write_output(rendered, args.output)
+        except OSError:
+            return 2
     else:
         print_report(results, colour=not args.no_colour)
 
