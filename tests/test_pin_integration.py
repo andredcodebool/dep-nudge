@@ -28,7 +28,14 @@ def requirements_file(tmp_path):
 
 
 def _fake_results(reqs: list[Requirement]) -> list[CheckResult]:
-    """Simulate checker output: bump all pinned packages by a patch version."""
+    """Simulate checker output: bump all pinned packages by a patch version.
+
+    Packages with a ``==`` specifier get their patch component incremented by
+    one to mimic a newer release being available.  Packages without a pinned
+    version (e.g. range specifiers or bare names) are left with
+    ``latest_version=None`` so that ``generate_pinned`` falls back to the
+    original specifier.
+    """
     results = []
     for req in reqs:
         latest = None
@@ -61,6 +68,14 @@ def test_unpinned_packages_use_original_specifier(requirements_file):
     results = _fake_results(reqs)
     output = generate_pinned(results)
     assert "flask>=2.0" in output
+
+
+def test_bare_package_preserved_in_output(requirements_file):
+    """A package with no specifier (e.g. 'numpy') should still appear in output."""
+    reqs = parse_requirements(requirements_file)
+    results = _fake_results(reqs)
+    output = generate_pinned(results)
+    assert "numpy" in output
 
 
 def test_write_pinned_round_trip(requirements_file, tmp_path):
